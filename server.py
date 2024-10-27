@@ -1,4 +1,7 @@
 import socket
+import sys
+import psycopg2
+
 
 def handle_client(client_socket):
     # Réception de l'id_employé
