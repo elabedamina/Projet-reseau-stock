@@ -2,6 +2,8 @@ import socket
 import sys
 import psycopg2
 
+MAX_BUFFER_SIZE = 1024  # Define a maximum buffer size for client messages
+
 def connexion():
     try: 
         connection = psycopg2.connect(
@@ -16,11 +18,27 @@ def connexion():
         print("Error connecting to the database:", error) 
         sys.exit(1)
 
+def receive_data(client_socket):
+    """Receives data from client, handling buffer overflow attempts."""
+    try:
+        data = client_socket.recv(MAX_BUFFER_SIZE).decode('utf-8')
+        if len(data) > MAX_BUFFER_SIZE:
+            raise ValueError("Buffer overflow attempt detected.")
+        return data.strip()
+    except (ValueError, socket.error) as e:
+        print(f"Security error: {e}")
+        client_socket.send("Erreur : Données envoyées dépassent la taille maximale autorisée.\n".encode('utf-8'))
+        client_socket.close()
+        return None
+
+
+
 def handle_client(cur, conn, client_socket):
     
     try :
+   
         # Réception de l'id_employé
-        employee_id = client_socket.recv(1024).decode('utf-8')
+        employee_id = receive_data(client_socket)
         print(f"Reçu id_employé: {employee_id}")
         
         # Vérifier l'employé dans la base de données
@@ -34,7 +52,7 @@ def handle_client(cur, conn, client_socket):
             return
         
         # Réception de l'id_stock
-        stock_id = client_socket.recv(1024).decode('utf-8')
+        stock_id = receive_data(client_socket)
         print(f"Reçu id_stock: {stock_id} \n")
         
         # Vérifier le stock dans la base de données
@@ -51,7 +69,7 @@ def handle_client(cur, conn, client_socket):
             return
         
         # Réception de la demande de modification de stock
-        modification = client_socket.recv(1024).decode('utf-8')
+        modification = receive_data(client_socket)
         print(f"Reçu modification: {modification} \n")
         
         try:
@@ -72,7 +90,7 @@ def handle_client(cur, conn, client_socket):
             client_socket.close()
             return
         
-        qte_modifie = client_socket.recv(1024).decode('utf-8')
+        qte_modifie = receive_data(client_socket)
         print(f"Reçu quantite: {qte_modifie} \n")
         
         try:
@@ -110,18 +128,18 @@ def handle_client(cur, conn, client_socket):
 
                 client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
     
-    except Exception as e :  
+    except Exception as e :
+    
         print(f"Erreur lors du traitement du client : {e}")
         client_socket.send("Erreur lors du traitement de votre demande.\n".encode('utf-8'))
     
     finally:
+    
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
-
 
 def main():
     print("Starting the server...")
-
-    # Connect to the database
+   
     print("Connecting to the database...")
     connection = connexion()
     print("Connection with the database established.")
@@ -130,33 +148,15 @@ def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("127.0.0.1", 9999))
     server.listen(5)
-    server.settimeout(60)  # Set a timeout for the server to wait for new connections
-
     print("Serveur en attente de connexion...")
 
-    try:
-        while True:
-            try:
-                client_socket, addr = server.accept()
-                print(f"Connexion acceptée de {addr}")
-                
-                # Handle client operations
-                handle_client(cur, connection, client_socket)
-                
-                print("En attente d'une nouvelle connexion...")
 
-            except socket.timeout:
-                print("Aucune connexion reçue dans le délai imparti. Fermeture du serveur...")
-                break
-
-    except KeyboardInterrupt:
-        print("\nArrêt manuel du serveur...")
-    
-    finally:
-        cur.close()
-        connection.close()
-        server.close()
-        print("Connection closed with the database and server shut down.")
+    client_socket, addr = server.accept()
+    print(f"Connexion acceptée de {addr}")
+    handle_client(cur, connection, client_socket) 
+    cur.close() 
+    connection.close() 
+    print("Connection closed with the database.")
 
 if __name__ == "__main__":
     main()
