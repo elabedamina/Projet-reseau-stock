@@ -35,11 +35,17 @@ def receive_data(client_socket):
 
 def handle_client(cur, conn, client_socket):
     
-    try :
+    try :  
+
+        client_socket.settimeout(100)  # Timeout after 100 seconds of inactivity
    
         # Réception de l'id_employé
         employee_id = receive_data(client_socket)
-        print(f"Reçu id_employé: {employee_id}")
+        if not employee_id:
+            print("Client has disconnected.")
+            return
+        
+        print(f"--> Reçu id_employé: {employee_id}")
         
         # Vérifier l'employé dans la base de données
         cur.execute("SELECT * FROM employe WHERE id_employe = %s;",(employee_id,))
@@ -53,7 +59,12 @@ def handle_client(cur, conn, client_socket):
         
         # Réception de l'id_stock
         stock_id = receive_data(client_socket)
-        print(f"Reçu id_stock: {stock_id} \n")
+        
+        if not stock_id:
+            print("--> Client has disconnected.")
+            return
+        
+        print(f"--> Reçu id_stock: {stock_id}.")
         
         # Vérifier le stock dans la base de données
         cur.execute("SELECT qte FROM stock WHERE id_stock = %s;",(stock_id,))
@@ -70,7 +81,12 @@ def handle_client(cur, conn, client_socket):
         
         # Réception de la demande de modification de stock
         modification = receive_data(client_socket)
-        print(f"Reçu modification: {modification} \n")
+        
+        if not modification:
+            print("--> Client has disconnected.")
+            return
+        
+        print(f"--> Reçu modification: {modification}.")
         
         try:
             modification_value = int(modification)  # Attempt to convert to an integer
@@ -91,7 +107,12 @@ def handle_client(cur, conn, client_socket):
             return
         
         qte_modifie = receive_data(client_socket)
-        print(f"Reçu quantite: {qte_modifie} \n")
+        
+        if not qte_modifie:
+            print("--> Client has disconnected.")
+            return
+        
+        print(f"--> Reçu quantite: {qte_modifie}")
         
         try:
             qte_modifie_value = int(qte_modifie)  # Attempt to convert to an integer
@@ -110,14 +131,6 @@ def handle_client(cur, conn, client_socket):
         if int(modification) == 1 : # une entrée
             cur.execute("UPDATE stock SET qte = qte + %s WHERE id_stock = %s;", (qte_modifie_value, stock_id))
             conn.commit()
-
-            tables = cur.execute("SELECT * FROM stock WHERE id_stock = 2;")
-            tables = cur.fetchall()
-            
-            # Print each table name
-            for table in tables:
-                print("here's",table)
-
             client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
         else : # une sortie
             if (stock[0] <= 0) or (stock[0] - qte_modifie_value < 0):
@@ -128,9 +141,17 @@ def handle_client(cur, conn, client_socket):
 
                 client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
     
+    except socket.timeout:
+        print("--> Client timed out due to inactivity.")
+        client_socket.send("Connection timed out due to inactivity.\n".encode('utf-8'))
+        
+    except (ConnectionResetError, ConnectionAbortedError):
+        print("--> Client connection was reset or aborted.")
+
+
     except Exception as e :
     
-        print(f"Erreur lors du traitement du client : {e}")
+        print(f"--> Erreur lors du traitement du client : {e}")
         client_socket.send("Erreur lors du traitement de votre demande.\n".encode('utf-8'))
     
     finally:
@@ -138,25 +159,25 @@ def handle_client(cur, conn, client_socket):
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
 
 def main():
-    print("Starting the server...")
+    print("1) Starting the server...")
    
-    print("Connecting to the database...")
+    print("2) Connecting to the database...")
     connection = connexion()
-    print("Connection with the database established.")
+    print(">> Connection with the database established.")
     cur = connection.cursor()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("127.0.0.1", 9999))
     server.listen(5)
-    print("Serveur en attente de connexion...")
+    print("3) Serveur en attente de connexion...")
 
 
     client_socket, addr = server.accept()
-    print(f"Connexion acceptée de {addr}")
+    print(f">> Connexion acceptée de {addr}")
     handle_client(cur, connection, client_socket) 
     cur.close() 
     connection.close() 
-    print("Connection closed with the database.")
+    print(">> Connection closed with the database.")
 
 if __name__ == "__main__":
     main()
