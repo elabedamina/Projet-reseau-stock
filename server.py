@@ -19,7 +19,6 @@ def connexion():
 def handle_client(cur, conn, client_socket):
     
     try :
-   
         # Réception de l'id_employé
         employee_id = client_socket.recv(1024).decode('utf-8')
         print(f"Reçu id_employé: {employee_id}")
@@ -111,13 +110,11 @@ def handle_client(cur, conn, client_socket):
 
                 client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
     
-    except Exception as e :
-    
+    except Exception as e :  
         print(f"Erreur lors du traitement du client : {e}")
         client_socket.send("Erreur lors du traitement de votre demande.\n".encode('utf-8'))
     
     finally:
-    
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
 
 
