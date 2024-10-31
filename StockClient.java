@@ -1,34 +1,82 @@
 import java.io.*;
 import java.net.*;
+import java.util.Scanner;
 
 public class StockClient {
 
     public static void main(String[] args) {
-        String serverAddress = "127.0.0.1"; // L'adresse IP du serveur
-        int port = 9999; // Le port du serveur
+        String serverAddress = "127.0.0.1"; // Server IP address
+        int port = 9999; // Server port
+        System.out.println("Starting the client...");
 
         try (Socket socket = new Socket(serverAddress, port)) {
-            // Configuration des flux d'entrée et de sortie
+            Scanner scanner = new Scanner(System.in);
+
+            // Set up input and output streams for communication
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 
-            // Envoi de l'id_employé
-            String employee_id = "123"; // Changer cet id pour tester d'autres cas
-            System.out.println("Envoi de l'id_employé: " + employee_id);
+            // Send employee_id
+            System.out.print("Veuillez introduire votre id_employé: ");
+            String employee_id = scanner.nextLine(); 
+            System.out.println("Envoi de l'id_employé: " + employee_id + " au serveur.");
             out.println(employee_id);
-            System.out.println("Réponse du serveur: " + in.readLine()+"\n");
+            String serverResponse = in.readLine();
 
-            // Envoi de l'id_stock
-            String stock_id = "456"; // Changer cet id pour tester d'autres cas
-            System.out.println("Envoi de l'id_stock: " + stock_id);
+            if (serverResponse == null || serverResponse.contains("Erreur")) {
+                System.out.println("Réponse du serveur: " + (serverResponse != null ? serverResponse : "Server closed the connection") + "\n");
+                System.out.println("Fermeture du client...");
+                return; // Exit if there is an error or disconnection
+            }
+            System.out.println("Réponse du serveur: " + serverResponse + "\n");
+
+            // Send stock_id
+            System.out.print("Veuillez introduire l'id_stock: ");
+            String stock_id = scanner.nextLine();
+            System.out.println("Envoi de l'id_stock: " + stock_id + " au serveur.");
             out.println(stock_id);
-            System.out.println("Réponse du serveur: " + in.readLine() +"\n");
+            serverResponse = in.readLine();
 
-            // Envoi de la demande de modification
-            String modification = "789,10"; // Opération ID et Quantité
-            System.out.println("Envoi de la modification: " + modification);
+            if (serverResponse == null || serverResponse.contains("Erreur")) {
+                System.out.println("Réponse du serveur: " + (serverResponse != null ? serverResponse : "Server closed the connection") + "\n");
+                System.out.println("Fermeture du client...");
+                return;
+            }
+            System.out.println("Réponse du serveur: " + serverResponse + "\n");
+
+            // Send modification request
+            System.out.println("Veuillez introduire :\n- 1 : Pour une entrée du stock.\n- 2: Pour une sortie du stock.");
+            String modification = scanner.nextLine();
+            System.out.println("Envoi de la modification: " + modification + " au serveur.");
             out.println(modification);
-            System.out.println("Réponse du serveur: " + in.readLine()+"\n");
+            serverResponse = in.readLine();
+
+            if (serverResponse == null || serverResponse.contains("Erreur")) {
+                System.out.println("Réponse du serveur: " + (serverResponse != null ? serverResponse : "Server closed the connection") + "\n");
+                System.out.println("Fermeture du client...");
+                return;
+            }
+            System.out.println("Réponse du serveur: " + serverResponse + "\n");
+
+            // Send quantity
+            System.out.println("Veuillez introduire la quantité à ajouter/enlever du stock");
+            String quantite = scanner.nextLine();
+            System.out.println("Envoi de la quantité: " + quantite + " au serveur.");
+            out.println(quantite);
+            serverResponse = in.readLine();
+
+            if (serverResponse == null || serverResponse.contains("Erreur")) {
+                System.out.println("Réponse du serveur: " + (serverResponse != null ? serverResponse : "Server closed the connection") + "\n");
+                System.out.println("Fermeture du client...");
+                return;
+            }
+            System.out.println("Réponse du serveur: " + serverResponse + "\n");
+
+            System.out.println("----------------------------FIN---------------------------------");
+
+            // Close the scanner after completing operations
+            scanner.close();
+            System.out.println("Client closed.");
 
         } catch (IOException e) {
             System.err.println("Erreur de connexion: " + e.getMessage());

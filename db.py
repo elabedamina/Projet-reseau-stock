@@ -7,14 +7,11 @@ def connexion():
     try: 
         print("Connecting to the database...")
         connection = psycopg2.connect(
-            # dbname="achiriaktham_tp_res_bdd",
-            # user="achiriaktham",
-            # password="MZpcA6zM9xh375x",
-            # host="postgresql-achiriaktham.alwaysdata.net",
-            dbname="test",
-            user="postgres",
-            password="postgres1234",
-            host="localhost",
+            dbname="achiriaktham_tp_res_bdd",
+            user="achiriaktham",
+            password="MZpcA6zM9xh375x",
+            host="postgresql-achiriaktham.alwaysdata.net",
+            
             port=5432
         )
         return connection
@@ -34,13 +31,23 @@ def main():
     #     WHERE table_schema = 'public'
     # """)
 
-    cur.execute("SELECT * FROM public.fournisseur;")
-    
+    tables = cur.execute("SELECT * FROM stock WHERE id_stock = 2;")
     tables = cur.fetchall()
-
+    
     # Print each table name
     for table in tables:
         print("here's",table)
+
+    # cur.execute("UPDATE stock SET qte = qte + %s WHERE id_stock = %s;", (5, 2))
+    # print("update")
+
+
+    # tables = cur.execute("SELECT * FROM stock WHERE id_stock = 2;")
+    # tables = cur.fetchall()
+
+    # # Print each table name
+    # for table in tables:
+    #     print("here's",table)
 
     # Close the cursor and connection
     cur.close()
