@@ -37,7 +37,7 @@ def handle_client(cur, conn, client_socket):
     
     try :  
 
-        client_socket.settimeout(100)  # Timeout after 100 seconds of inactivity
+        client_socket.settimeout(300000)  # Timeout after 5 mins of inactivity
    
         # Réception de l'id_employé
         employee_id = receive_data(client_socket)
@@ -159,10 +159,10 @@ def handle_client(cur, conn, client_socket):
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
 
 def main():
-    print("1) Starting the server...")
-   
+    print("1) Starting the server...")  
     print("2) Connecting to the database...")
     connection = connexion()
+    
     print(">> Connection with the database established.")
     cur = connection.cursor()
 
@@ -170,8 +170,6 @@ def main():
     server.bind(("127.0.0.1", 9999))
     server.listen(5)
     print("3) Serveur en attente de connexion...")
-
-
     client_socket, addr = server.accept()
     print(f">> Connexion acceptée de {addr}")
     handle_client(cur, connection, client_socket) 
