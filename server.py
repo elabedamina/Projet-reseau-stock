@@ -1,6 +1,7 @@
 import socket
 import sys
 import psycopg2
+import configparser
 
 MAX_BUFFER_SIZE = 1024  # Define a maximum buffer size for client messages
 
@@ -67,7 +68,7 @@ def handle_client(cur, conn, client_socket):
         print(f"--> Reçu id_stock: {stock_id}.")
         
         # Vérifier le stock dans la base de données
-        cur.execute("SELECT qte FROM stock WHERE id_stock = %s;",(stock_id,))
+        cur.execute("SELECT qte FROM lotstockage WHERE id_stock = %s;",(stock_id,))
         stock = cur.fetchone()
 
         if stock:
@@ -96,9 +97,9 @@ def handle_client(cur, conn, client_socket):
                 return
             else :
                 if modification_value == 1:
-                    client_socket.send("Vous avez choisi l'operation entree\n".encode('utf-8'))
+                    client_socket.send("> Vous avez choisi l'operation entree\n".encode('utf-8'))
                 elif modification_value == 2:
-                    client_socket.send("Vous avez choisi l'operation sortie\n".encode('utf-8'))                    
+                    client_socket.send("> Vous avez choisi l'operation sortie\n".encode('utf-8'))                    
 
         except ValueError:
             # Handle the case where conversion fails
@@ -129,14 +130,22 @@ def handle_client(cur, conn, client_socket):
 
 
         if int(modification) == 1 : # une entrée
-            cur.execute("UPDATE stock SET qte = qte + %s WHERE id_stock = %s;", (qte_modifie_value, stock_id))
+            cur.execute("UPDATE lotstockage SET qte = qte + %s WHERE id_stock = %s;", (qte_modifie_value, stock_id))
+            cur.execute(
+                "INSERT INTO historiquemodification (motif, qte_modifie, id_employe, id_stock) VALUES ('entrée du stock', %s, %s, %s)",
+                (qte_modifie_value, employee_id, stock_id)
+            )
             conn.commit()
             client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
         else : # une sortie
             if (stock[0] <= 0) or (stock[0] - qte_modifie_value < 0):
                 client_socket.send("Mise à jour du stock impossible, quantite insuffisante\n".encode('utf-8'))
             else:
-                cur.execute("UPDATE stock SET qte = qte - %s WHERE id_stock = %s;",(qte_modifie_value,stock_id,))
+                cur.execute("UPDATE lotstockage SET qte = qte - %s WHERE id_stock = %s;",(qte_modifie_value,stock_id,))
+                cur.execute(
+                "INSERT INTO historiquemodification (motif, qte_modifie, id_employe, id_stock) VALUES ('sortie du stock', %s, %s, %s)",
+                (qte_modifie_value, employee_id, stock_id)
+            )
                 conn.commit()
 
                 client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
@@ -159,17 +168,38 @@ def handle_client(cur, conn, client_socket):
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
 
 def main():
-    print("1) Starting the server...")  
+    # Charger la configuration
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+    
+    # Paramètres par défaut
+    default_host = "127.0.0.1"
+    default_port = 9999
+
+    host = config.get("server", "host", fallback=default_host)
+    port = config.getint("server", "port", fallback=default_port)
+    
+    print(f"1) Serveur démarrant sur {host}:{port}...")  
     print("2) Connecting to the database...")
     connection = connexion()
     
     print(">> Connection with the database established.")
     cur = connection.cursor()
+    try :
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind((host, port))
+        server.listen(5)
+        print("3) Serveur en attente de connexion...")
 
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(("127.0.0.1", 9999))
-    server.listen(5)
-    print("3) Serveur en attente de connexion...")
+    except OSError as e:
+        if e.errno == 98: 
+            print("Erreur : Le port est déjà utilisé.")
+        elif e.errno == 99: 
+            print("Erreur : L'adresse IP spécifiée est invalide.")
+        else:
+            print(f"Erreur réseau inattendue : {e}")
+        sys.exit(1)
+
     client_socket, addr = server.accept()
     print(f">> Connexion acceptée de {addr}")
     handle_client(cur, connection, client_socket) 

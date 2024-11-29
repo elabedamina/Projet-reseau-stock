@@ -1,15 +1,34 @@
 import java.io.*;
 import java.net.*;
 import java.util.Scanner;
+import java.util.Properties;
 
 public class StockClient {
 
     public static void main(String[] args) {
-        String serverAddress = "127.0.0.1"; // Server IP address
-        int port = 9999; // Server port
+
+        Properties properties = new Properties();
+
+        // Charger les paramètres par défaut
+        String defaultHost = "127.0.0.1";
+        int defaultPort = 9999;
+
+        try (InputStream input = new FileInputStream("config.properties")) {
+            properties.load(input);
+        } catch (IOException ex) {
+            System.out.println("Fichier de configuration introuvable, utilisation des paramètres par défaut.");
+        }
+
+        String serverAddress = properties.getProperty("server.host", defaultHost);
+        int port = Integer.parseInt(properties.getProperty("server.port", String.valueOf(defaultPort)));
+
+
         System.out.println("1) Starting the client...");
+        System.out.println("Connexion au serveur " + serverAddress + " sur le port " + port);
 
         try (Socket socket = new Socket(serverAddress, port)) {
+
+            System.out.println("Connecté au serveur.");
             Scanner scanner = new Scanner(System.in);
 
             // Set up input and output streams for communication
@@ -92,13 +111,18 @@ public class StockClient {
             System.out.println(">> Client closed.");
             System.out.println("----------------------------FIN---------------------------------");
 
-        }
-        catch (ConnectException e) {
-            System.out.println("Erreur : Impossible de se connecter au serveur. Vérifiez si le serveur est disponible et le port est correct.");
         } catch (SocketTimeoutException e) {
-            System.out.println(">> Inactivity timeout: No response from the server for 100 seconds. Closing client.");
+            System.out.println("Erreur : Temps d'attente dépassé. Le serveur ne répond pas.");
+        } catch (UnknownHostException e) {
+            System.out.println("Erreur : Le nom de domaine ou l'adresse IP du serveur est introuvable. Vérifiez l'adresse : " + e.getMessage());
+        } catch (ConnectException e) {
+            System.out.println("Erreur : Impossible de se connecter au serveur. Le port " + port + " est peut-être fermé ou le serveur est hors ligne.");
+        }  catch (IllegalArgumentException e) {
+            System.out.println("Erreur : Paramètres invalides (port ou adresse incorrects) : " + e.getMessage());
         } catch (IOException e) {
             System.err.println("--> Erreur de connexion: " + e.getMessage());
+        } finally {
+            System.out.println("Client fermé.");
         }
     }
 }
