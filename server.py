@@ -1,9 +1,21 @@
 import socket
 import sys
 import psycopg2
-import configparser
+import argparse
+import time
+import logging
 
-MAX_BUFFER_SIZE = 1024  # Define a maximum buffer size for client messages
+# Configuration du logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('server_log.txt'),
+        logging.StreamHandler()
+    ]
+)
+
+MAX_BUFFER_SIZE = 10  # maximum buffer size for client messages
 
 def connexion():
     try: 
@@ -14,47 +26,72 @@ def connexion():
             host="postgresql-achiriaktham.alwaysdata.net",
             port=5432
         )
+        logging.info("Connexion à la base de données réussie.")
         return connection
     except psycopg2.Error as error:
-        print("Error connecting to the database:", error) 
+        logging.error(f"Erreur lors de la connexion à la base de données: {error}")
         sys.exit(1)
 
 def receive_data(client_socket):
     """Receives data from client, handling buffer overflow attempts."""
     try:
-        data = client_socket.recv(MAX_BUFFER_SIZE).decode('utf-8')
+        data = client_socket.recv(1025).decode('utf-8')
         if len(data) > MAX_BUFFER_SIZE:
             raise ValueError("Buffer overflow attempt detected.")
         return data.strip()
     except (ValueError, socket.error) as e:
-        print(f"Security error: {e}")
+        logging.warning(f"Erreur de sécurité: {e}")
         client_socket.send("Erreur : Données envoyées dépassent la taille maximale autorisée.\n".encode('utf-8'))
         client_socket.close()
         return None
 
-
+def is_db_connected(connection):
+    """Function to check if the database connection is still active."""
+    try:
+        # Try executing a simple query to test if the connection is still active
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1;")
+        return True
+    except psycopg2.OperationalError:
+        return False
 
 def handle_client(cur, conn, client_socket):
     
     try :  
 
-        client_socket.settimeout(300000)  # Timeout after 5 mins of inactivity
-   
+        client_socket.settimeout(60)  # Timeout after 1 min of inactivity
+
         # Réception de l'id_employé
         employee_id = receive_data(client_socket)
         if not employee_id:
-            print("Client has disconnected.")
+            logging.info("Le client s'est déconnecté.")
             return
-        
-        print(f"--> Reçu id_employé: {employee_id}")
-        
+       
+        try:
+            employee_id_value = int(employee_id)  # Attempt to convert to an integer
+        except ValueError:
+            # Handle the case where conversion fails
+            logging.warning("La valeur fournie pour l'ID employé n'est pas un nombre valide.")
+            client_socket.send("Erreur : La valeur fournie n'est pas un nombre valide.\n".encode('utf-8'))
+            client_socket.close()
+            return
+       
+        logging.info(f"--> Reçu id_employé: {employee_id_value}")
+
+        if not is_db_connected(conn):
+            logging.error("Perte de connexion à la bd.")
+            client_socket.send("Erreur : Perte de connexion à la bd.\n".encode('utf-8'))
+            return
+         
         # Vérifier l'employé dans la base de données
-        cur.execute("SELECT * FROM employe WHERE id_employe = %s;",(employee_id,))
+       
+        cur.execute("SELECT * FROM employe WHERE id_employe = %s;",(employee_id_value,))
         employee = cur.fetchone()
     
         if employee: # the employee exists in the database
             client_socket.send("Identification réussie\n".encode('utf-8'))
         else:
+            logging.warning(f"Employé introuvable avec id_employé: {employee_id_value}")  
             client_socket.send("Erreur : Employé introuvable\n".encode('utf-8'))
             return
         
@@ -62,13 +99,27 @@ def handle_client(cur, conn, client_socket):
         stock_id = receive_data(client_socket)
         
         if not stock_id:
-            print("--> Client has disconnected.")
+            logging.info("Le client s'est déconnecté.")
             return
         
-        print(f"--> Reçu id_stock: {stock_id}.")
+        try:
+            stock_id_value = int(stock_id)  # Attempt to convert to an integer
+        except ValueError:
+            # Handle the case where conversion fails
+            logging.warning("La valeur fournie pour l'ID stock n'est pas un nombre valide.")
+            client_socket.send("Erreur : La valeur fournie n'est pas un nombre valide.\n".encode('utf-8'))
+            client_socket.close()
+            return
         
+        logging.info(f"--> Reçu id_stock: {stock_id_value}.")
+        
+        if not is_db_connected(conn):
+            logging.error("Perte de connexion à la bd.")
+            client_socket.send("Erreur : Perte de connexion à la bd.\n".encode('utf-8'))
+            return
+         
         # Vérifier le stock dans la base de données
-        cur.execute("SELECT qte FROM lotstockage WHERE id_stock = %s;",(stock_id,))
+        cur.execute("SELECT qte FROM lotstockage WHERE id_stock = %s;",(stock_id_value,))
         stock = cur.fetchone()
 
         if stock:
@@ -76,6 +127,7 @@ def handle_client(cur, conn, client_socket):
             client_socket.send(f"Stock trouvé, la quantité restante est : {quantity}\n".encode('utf-8'))
 
         else:
+            logging.warning(f"Stock introuvable pour id_stock: {stock_id_value}")
             client_socket.send("Erreur : Stock introuvable\n".encode('utf-8'))
             client_socket.close()
             return
@@ -84,15 +136,16 @@ def handle_client(cur, conn, client_socket):
         modification = receive_data(client_socket)
         
         if not modification:
-            print("--> Client has disconnected.")
+            logging.info("Le client s'est déconnecté.")
             return
         
-        print(f"--> Reçu modification: {modification}.")
-        
+        logging.info(f"Reçu modification: {modification}.")
+
         try:
             modification_value = int(modification)  # Attempt to convert to an integer
             if modification_value != 1 and modification_value != 2:
                 client_socket.send("Erreur : Aucune operation ne correspond a votre demande !\n".encode('utf-8'))
+                logging.warning("Opération invalide choisie.")
                 client_socket.close()
                 return
             else :
@@ -104,30 +157,38 @@ def handle_client(cur, conn, client_socket):
         except ValueError:
             # Handle the case where conversion fails
             client_socket.send("Erreur : La valeur fournie n'est pas un nombre valide.\n".encode('utf-8'))
+            logging.warning("La valeur fournie pour la modification n'est pas valide.")
             client_socket.close()
             return
         
         qte_modifie = receive_data(client_socket)
         
         if not qte_modifie:
-            print("--> Client has disconnected.")
+            logging.info("Le client s'est déconnecté.")
             return
         
-        print(f"--> Reçu quantite: {qte_modifie}")
-        
+        logging.info(f"Reçu quantité à modifier: {qte_modifie}")
+
         try:
             qte_modifie_value = int(qte_modifie)  # Attempt to convert to an integer
 
             if qte_modifie_value < 0:
                 client_socket.send("Erreur : vous avez introduit un nombre négatif !\n".encode('utf-8'))
+                logging.warning("La valeur fournie pour la modification n'est pas valide.")                
                 client_socket.close()  
                 return
 
         except ValueError: # Handle the case where conversion fails
             client_socket.send("Erreur : La valeur fournie n'est pas un nombre valide.\n".encode('utf-8'))
+            logging.warning("La valeur fournie pour la modification n'est pas valide.")
+
             client_socket.close() 
             return
 
+        if not is_db_connected(conn):
+            logging.error("Perte de connexion à la bd.")
+            client_socket.send("Erreur : Perte de connexion à la bd.\n".encode('utf-8'))
+            return
 
         if int(modification) == 1 : # une entrée
             cur.execute("UPDATE lotstockage SET qte = qte + %s WHERE id_stock = %s;", (qte_modifie_value, stock_id))
@@ -136,9 +197,11 @@ def handle_client(cur, conn, client_socket):
                 (qte_modifie_value, employee_id, stock_id)
             )
             conn.commit()
+            logging.info("Mise à jour du stock réussie")
             client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
         else : # une sortie
             if (stock[0] <= 0) or (stock[0] - qte_modifie_value < 0):
+                logging.info("Mise à jour du stock impossible")
                 client_socket.send("Mise à jour du stock impossible, quantite insuffisante\n".encode('utf-8'))
             else:
                 cur.execute("UPDATE lotstockage SET qte = qte - %s WHERE id_stock = %s;",(qte_modifie_value,stock_id,))
@@ -147,40 +210,38 @@ def handle_client(cur, conn, client_socket):
                 (qte_modifie_value, employee_id, stock_id)
             )
                 conn.commit()
-
+                logging.info("Mise à jour du stock réussie")
                 client_socket.send("Mise à jour du stock reussie\n".encode('utf-8'))
     
     except socket.timeout:
-        print("--> Client timed out due to inactivity.")
+        logging.warning("Le client a dépassé le délai d'attente.")
         client_socket.send("Connection timed out due to inactivity.\n".encode('utf-8'))
         
     except (ConnectionResetError, ConnectionAbortedError):
-        print("--> Client connection was reset or aborted.")
-
+        logging.warning("La connexion client a été réinitialisée ou abandonnée.")
 
     except Exception as e :
-    
-        print(f"--> Erreur lors du traitement du client : {e}")
+        logging.error(f"Erreur lors du traitement du client: {e}")
         client_socket.send("Erreur lors du traitement de votre demande.\n".encode('utf-8'))
     
     finally:
-    
+        logging.info("Fermeture de la connexion avec le client.")
         client_socket.close()  # Ensure the socket is closed regardless of success or failure
 
 def main():
-    # Charger la configuration
-    config = configparser.ConfigParser()
-    config.read("config.ini")
-    
-    # Paramètres par défaut
-    default_host = "127.0.0.1"
-    default_port = 9999
+    # Set up argument parsing
+    parser = argparse.ArgumentParser(description="Start the stock management server.")
+    parser.add_argument('--host', type=str, default="127.0.0.1", help="IP address of the server (default: 127.0.0.1).")
+    parser.add_argument('--port', type=int, default=9999, help="Port number of the server (default: 9999).")
+    args = parser.parse_args()
 
-    host = config.get("server", "host", fallback=default_host)
-    port = config.getint("server", "port", fallback=default_port)
+    # Use the provided host and port
+    host = args.host
+    port = args.port
     
-    print(f"1) Serveur démarrant sur {host}:{port}...")  
-    print("2) Connecting to the database...")
+    logging.info(f"Serveur démarrant sur {host}:{port}...") 
+    
+    print("> Connecting to the database...")
     connection = connexion()
     
     print(">> Connection with the database established.")
@@ -188,24 +249,33 @@ def main():
     try :
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind((host, port))
-        server.listen(5)
-        print("3) Serveur en attente de connexion...")
+        server.listen()
+        server.settimeout(60)  # Set a 1-minute timeout for accepting connections
+
+        print("> Serveur en attente de connexion...")
+        client_socket, addr = server.accept()
+        print(f">> Connexion acceptée de {addr}")
+        handle_client(cur, connection, client_socket) 
+
+        server.close()
+        print(">> Server socket closed.")
 
     except OSError as e:
-        if e.errno == 98: 
-            print("Erreur : Le port est déjà utilisé.")
-        elif e.errno == 99: 
-            print("Erreur : L'adresse IP spécifiée est invalide.")
+        if e.winerror == 10013: 
+            logging.error("Erreur : Le port est déjà utilisé.")
+        elif e.winerror == 10049: 
+            logging.error("Erreur : L'adresse IP spécifiée est invalide.")
         else:
-            print(f"Erreur réseau inattendue : {e}")
+            logging.error(f"Erreur réseau inattendue : {e}")
         sys.exit(1)
 
-    client_socket, addr = server.accept()
-    print(f">> Connexion acceptée de {addr}")
-    handle_client(cur, connection, client_socket) 
-    cur.close() 
-    connection.close() 
-    print(">> Connection closed with the database.")
+    
+    
+    finally:
+        cur.close() 
+        connection.close() 
+        logging.info(">> Connexion fermé avec la base de données")
+        
 
 if __name__ == "__main__":
     main()
